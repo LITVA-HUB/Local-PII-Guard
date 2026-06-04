@@ -154,7 +154,7 @@ def _token_to_pattern(tok: str) -> str:
 
 
 def _build_name_search_regex(name_text: str) -> Optional[re.Pattern[str]]:
-    """
+    r"""
     Делает regex, который ищет `name_text` в исходном куске:
       - слова соединяем через \s+ (терпим разные пробелы)
       - инициалы терпят пробелы после точек
