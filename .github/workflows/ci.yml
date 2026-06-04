@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  python-checks:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install faker
+          # llama-cpp-python requires native build; skip in CI — benchmark will skip model-dependent path
+          # pip install llama-cpp-python
+
+      - name: Compile check
+        run: python -m compileall .
+
+      - name: Benchmark smoke (no model)
+        run: |
+          echo "Full benchmark requires local Qwen2.5 model (~1.5 GB)."
+          echo "Skipping model-dependent steps in CI."
+          python -c "
+          from pii_detectors import build_default_regex_detectors
+          from pii_models import PIIGatewayPolicy
+          from pii_vault import InMemoryPIIVault
+          policy = PIIGatewayPolicy(enable_llm_names=False)
+          vault = InMemoryPIIVault(policy)
+          detectors = build_default_regex_detectors(policy)
+          print('Regex detectors loaded OK:', len(detectors), 'detectors')
+          "
