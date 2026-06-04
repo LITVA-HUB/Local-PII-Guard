@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""
+In-memory PII Vault for storing token-to-value mappings per session.
+
+The Vault is the only component that holds original PII values.
+All other components work exclusively with tokens.
+"""
+
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, List
@@ -105,3 +112,16 @@ class InMemoryPIIVault:
     def reset_session(self, session_id: str) -> None:
         with self._lock:
             self._sessions.pop(session_id, None)
+
+    def session_ids(self) -> list:
+        """Return a list of all active session IDs."""
+        with self._lock:
+            return list(self._sessions.keys())
+
+    def count_sessions(self) -> int:
+        """Return the number of active sessions (useful for diagnostics)."""
+        with self._lock:
+            return len(self._sessions)
+
+
+__all__ = ["SessionVault", "InMemoryPIIVault"]
