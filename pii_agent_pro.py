@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""
+PIIGateway — the main tokenization and restore pipeline.
+
+Combines regex detectors, local LLM-based name extraction, heuristic
+fallback, overlap resolution, and Vault storage into a single interface.
+"""
+
 import time
 import re
 from typing import Any, Dict, List, Optional
@@ -15,10 +22,6 @@ from pii_models import (
 from pii_detectors import build_default_regex_detectors
 from pii_vault import InMemoryPIIVault
 from pii_llm_names import LocalNameExtractor, heuristic_name_spans
-
-
-def _perf() -> float:
-    return time.perf_counter()
 
 
 class PIIGateway:
@@ -49,26 +52,26 @@ class PIIGateway:
                 self.policy.enable_llm_names = False
 
     def tokenize(self, session_id: str, text: str) -> Dict[str, Any]:
-        t0 = _perf()
+        t0 = time.perf_counter()
         if not isinstance(text, str):
             text = str(text)
 
         warnings: List[str] = []
 
-        # 1) Regex (структурные ПДн)
-        t1 = _perf()
+        # 1. Structured PII: regex detectors
+        t1 = time.perf_counter()
         regex_entities: List[Entity] = []
         for det in self._regex_detectors:
             if det.entity_type not in self.policy.enabled_types:
                 continue
             regex_entities.extend(det.find(text))
-        t2 = _perf()
+        t2 = time.perf_counter()
 
         regex_entities = resolve_overlaps(regex_entities)
         forbidden_spans = [e.span() for e in regex_entities]
 
-        # 2) Names: LLM + ALWAYS heuristic backup
-        t3 = _perf()
+        # 2. Names: LLM extraction + unconditional heuristic backup
+        t3 = time.perf_counter()
         name_warnings: List[str] = []
         llm_name_entities: List[Entity] = []
         heuristic_entities: List[Entity] = []
@@ -88,7 +91,7 @@ class PIIGateway:
             if failed_hard and self.policy.name_fallback == "raise" and self.policy.fail_closed:
                 raise RuntimeError(f"Name extraction failed (fail-closed): {name_warnings}")
 
-            # Heuristic ALWAYS (потому что у тебя именно "missing token" и "кривые спаны")
+            # Heuristic runs unconditionally as a safety net after LLM extraction
             for s, e in heuristic_name_spans(text):
                 if any(overlaps((s, e), fs) for fs in forbidden_spans):
                     continue
@@ -105,7 +108,7 @@ class PIIGateway:
                     )
                 )
 
-            # Merge: LLM выше приоритетом, heuristic закрывает дыры
+            # Merge: LLM takes priority; heuristic fills coverage gaps
             llm_name_entities = [
                 ne for ne in llm_name_entities
                 if not any(overlaps(ne.span(), fs) for fs in forbidden_spans)
@@ -115,13 +118,13 @@ class PIIGateway:
             name_entities = []
 
         warnings.extend(name_warnings)
-        t4 = _perf()
+        t4 = time.perf_counter()
 
-        # 3) Merge all + resolve overlaps
+        # 3. Merge all entities and resolve overlaps
         entities = resolve_overlaps(list(regex_entities) + list(name_entities))
 
-        # 4) Replace from end to start
-        t5 = _perf()
+        # 4. Replace spans from right to left to preserve offsets
+        t5 = time.perf_counter()
         entities_sorted = sorted(entities, key=lambda e: e.start, reverse=True)
 
         tokenized = text
@@ -152,7 +155,7 @@ class PIIGateway:
             result_entities.append(rec)
 
         result_entities.sort(key=lambda x: x["start"])
-        t6 = _perf()
+        t6 = time.perf_counter()
 
         return {
             "session_id": session_id,
@@ -165,7 +168,7 @@ class PIIGateway:
                     "regex_s": round(t2 - t1, 6),
                     "names_s": round(t4 - t3, 6),
                     "replace_s": round(t6 - t5, 6),
-                    "total_s": round(_perf() - t0, 6),
+                    "total_s": round(time.perf_counter() - t0, 6),
                 },
             },
         }
@@ -213,12 +216,16 @@ class PIIGateway:
 
     @property
     def cloud_system_prompt(self) -> str:
+        """System prompt that instructs cloud LLMs to treat tokens as opaque placeholders."""
         return (
-            "В тексте могут встречаться приватные токены вида <<TYPE_N>> (например <<NAME_1>>, <<PHONE_1>>).\n"
-            "Эти токены заменяют персональные данные и НЕ должны быть изменены.\n"
-            "Правила:\n"
-            "1) Никогда не раскрывай и не пытайся угадать значения токенов.\n"
-            "2) Не изменяй токены (не добавляй пробелы, не меняй регистр, не удаляй символы < > _).\n"
-            "3) Используй токены как есть, в том числе для обращения (например: 'Здравствуйте, <<NAME_1>>').\n"
-            "4) Не проси повторно телефон/email/паспорт/карту, если уже есть соответствующий токен.\n"
+            "The text may contain privacy tokens like <<TYPE_N>> (e.g. <<NAME_1>>, <<PHONE_1>>).\n"
+            "These tokens replace personal data and MUST NOT be modified or guessed.\n"
+            "Rules:\n"
+            "1) Never reveal or try to infer the values behind tokens.\n"
+            "2) Keep tokens intact: do not add spaces, change case, or remove < > _ characters.\n"
+            "3) Use tokens as-is, including for addressing (e.g. 'Hello, <<NAME_1>>').\n"
+            "4) Do not ask for phone/email/passport/card again if a token for it already exists.\n"
         )
+
+
+__all__ = ["PIIGateway"]
