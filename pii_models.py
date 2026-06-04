@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""
+Core data models, entity type constants, policy configuration, and
+normalization utilities shared across all PII Guard components.
+"""
+
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
@@ -101,7 +106,7 @@ class PIIGatewayPolicy:
     Security knobs:
     - fail_closed: if True, you prefer raising if name extraction is unavailable and NAME is enabled.
     """
-    enabled_types: set = field(default_factory=lambda: set(DEFAULT_ENABLED_TYPES))
+    enabled_types: "set[str]" = field(default_factory=lambda: set(DEFAULT_ENABLED_TYPES))
 
     # Token formatting
     token_prefix: str = "<<"
@@ -209,3 +214,12 @@ def format_for_storage(entity_type: str, raw: str) -> str:
     if entity_type == ENTITY_NAME:
         return " ".join(s.split())
     return s
+
+__all__ = [
+    "ENTITY_EMAIL", "ENTITY_PHONE", "ENTITY_CARD", "ENTITY_SNILS",
+    "ENTITY_PASSPORT", "ENTITY_DATE", "ENTITY_NAME",
+    "DEFAULT_ENABLED_TYPES", "TOKEN_PATTERN",
+    "Span", "Entity", "PIIGatewayPolicy",
+    "overlaps", "resolve_overlaps",
+    "normalize_for_key", "format_for_storage",
+]
