@@ -1,157 +1,77 @@
+# Local PII Guard
 
-⸻
+[![CI](https://github.com/LITVA-HUB/Local-PII-Guard/actions/workflows/ci.yml/badge.svg)](https://github.com/LITVA-HUB/Local-PII-Guard/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
+![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)
+![Privacy](https://img.shields.io/badge/privacy-local--first-brightgreen)
+![LLM](https://img.shields.io/badge/LLM-local%20NER-informational)
 
+**Local PII Guard is a local-first privacy gateway for LLM apps and AI agents.**
 
-# 🛡️ Local PII Guard  
-### Локальный Privacy-шлюз (Hybrid AI Engine) для LLM и AI-агентов
+It detects personal data, replaces it with stable reversible tokens, keeps original values in a local Vault, sends only sanitized text to cloud LLMs, and restores the final response locally.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" />
-  <img src="https://img.shields.io/badge/python-3.9%2B-yellow" />
-  <img src="https://img.shields.io/badge/run_on-Apple%20Silicon%20%2F%20CPU-black" />
-  <img src="https://img.shields.io/badge/core-Qwen%202.5%20(3B)-ff69b4" />
-  <img src="https://img.shields.io/badge/privacy-100%25%20offline-brightgreen" />
-</p>
-
----
-
-## 🚀 Что такое Local PII Guard?
-
-**Local PII Guard** — это интеллектуальный **шлюз защиты персональных данных (DLP / Privacy Layer)**,  
-который ставится **перед облачными LLM и AI-системами**.
-
-Он автоматически:
-- находит персональные данные в тексте,
-- заменяет их на **стабильные обратимые токены** (`<<NAME_1>>`, `<<PHONE_1>>`),
-- сохраняет оригинальные значения **локально**,
-- позволяет безопасно использовать облачные модели,
-- полностью восстанавливает данные после ответа LLM.
-
-> Персональные данные **никогда не покидают ваше устройство или сервер**.
+- 🇷🇺 Russian README: [README.ru.md](./README.ru.md)
+- Benchmark methodology: [docs/BENCHMARK.md](./docs/BENCHMARK.md)
+- Roadmap: [ROADMAP.md](./ROADMAP.md)
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
-## 🧠 Ключевая идея
+## Why this matters for OSS maintainers
 
-Local PII Guard работает как промежуточный privacy-шлюз между источником данных и облачной AI-моделью.
+LLM apps and AI agents often send user messages, CRM data, logs, payloads, and support conversations to cloud models. Local PII Guard gives developers a local privacy layer that can tokenize personal data before it leaves the trusted environment and restore it after the model response returns.
 
-Последовательность работы следующая:
-	1.	Пользователь или система передаёт неструктурированный текст
-(чат, сообщение, лог, payload, JSON и т.д.).
-	2.	Local PII Guard локально анализирует текст и:
-	•	находит персональные данные (ФИО, телефоны, email, паспорта, карты и т.д.);
-	•	применяет валидации (контекст, формат, контрольные суммы);
-	•	присваивает каждому найденному значению стабильный токен
-(например <<NAME_1>>, <<PHONE_1>>).
-	3.	Оригинальные значения сохраняются локально
-во внутреннем хранилище (Vault), привязанном к сессии или пользователю.
-	4.	В облачную LLM отправляется только токенизированный текст,
-который не содержит персональных данных.
-	5.	Облачная модель отвечает, используя токены как обычные сущности
-(например обращаясь к <<NAME_1>> или ссылаясь на <<PHONE_1>>).
-	6.	Ответ возвращается обратно в Local PII Guard,
-где токены полностью восстанавливаются в исходные значения.
-	7.	Финальный ответ (уже с реальными данными) возвращается пользователю
-или передаётся в локальные системы (CRM, БД, агенты).
-
-⸻
-
-Почему это безопасно
-	•	персональные данные никогда не покидают локальную среду;
-	•	облачная модель физически не знает, какие значения стоят за токенами;
-	•	даже при логировании или утечке запросов в облаке — ПДн отсутствуют;
-	•	восстановление возможно только локально, через Vault.
-
-⸻
-
-Почему это удобно для AI-агентов
-	•	облачная LLM может вести естественный диалог, не ломая логику;
-	•	токены стабильны в рамках сессии;
-	•	можно заполнять CRM реальными данными;
-	•	можно строить цепочки агентов без утечки ПДн;
-	•	архитектура масштабируется под любые сценарии (чат, API, batch).
+This helps maintainers build privacy-preserving AI workflows without forcing every project to implement its own PII detection, reversible tokenization, Vault mapping, restore logic, and leakage checks.
 
 ---
 
-## 🔐 Какие персональные данные защищаются
+## What it does
 
-### Структурированные (Regex + валидация)
-- 📧 **EMAIL**
-- 📞 **Телефон** (RU +7 / 8, защита от ложных срабатываний)
-- 💳 **Банковские карты** (13–19 цифр + алгоритм Луна)
-- 🪪 **Паспорт РФ** (4+6, с контекстным фильтром)
-- 🧾 **СНИЛС**
-- 📅 **Даты** (`дд.мм.гггг`)
-
-### Неструктурированные (локальный LLM + эвристики)
-- 👤 **ФИО / Имя + Фамилия / Инициалы**
-
-Для имён используется **локальная модель Qwen 2.5 (3B)** через `llama.cpp`  
-+ строгая пост-валидация и fallback-логика.
+- detects structured PII such as email, phone numbers, bank cards, Russian passport-like numbers, SNILS-like identifiers, and dates;
+- detects names with local LLM-assisted NER plus validation and fallback logic;
+- replaces sensitive values with stable reversible tokens such as `<<NAME_1>>` and `<<PHONE_1>>`;
+- stores originals in a local Vault scoped to a session or user;
+- sends only tokenized text to cloud LLMs;
+- restores cloud responses back to the original values locally;
+- supports benchmark-driven validation for leakage, false positives, restore correctness, mixed cases, negative cases, and token stability.
 
 ---
 
-## ⚙️ Как это работает внутри
+## Security model
 
-1. Regex-детекторы находят все структурированные ПДн  
-2. Контекстные фильтры предотвращают false-positive  
-3. Карты проходят **Luhn-проверку**  
-4. Локальный LLM извлекает имена (NER)  
-5. Все найденные данные заменяются на токены `<<TYPE_N>>`  
-6. Оригинальные значения сохраняются в **локальном Vault**  
-7. В облако отправляется **только токенизированный текст**  
-8. Ответ LLM восстанавливается локально **1:1**
+Local PII Guard assumes that cloud LLM providers, logs, traces, and downstream agent tools should not receive raw personal data. The gateway replaces sensitive values with stable reversible tokens before the request leaves the local environment. Original values stay in the local Vault and are restored only after the model response returns.
 
----
+Security-sensitive areas:
 
-## 🧪 Качество и бенчмарки
-
-В проекте реализован **жёсткий golden-benchmark**.
-
-### Результаты:
-- ✅ **5310 тест-кейсов**
-- ✅ **3 разных seed**
-- ✅ **100% точность**
-- ❌ 0 утечек
-- ❌ 0 ложных срабатываний
-- 🔁 Полное восстановление
-- 🔒 Стабильность сессий
-
-### Производительность (Mac M2 / 8GB RAM):
-- p50 ≈ **0.29 сек**
-- p95 ≈ **1.13 сек**
+- detector false negatives;
+- detector false positives that damage useful content;
+- token collisions;
+- local Vault leakage;
+- accidental logging of raw PII;
+- restore mismatches;
+- prompt injection that tries to reveal or manipulate tokens;
+- unsafe integrations with CRM, Telegram, databases, or agent tools.
 
 ---
 
-## 🏃 Быстрый старт
-
-### 1️⃣ Установка зависимостей
+## Quick start
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install llama-cpp-python faker
+pip install -r requirements.txt
+```
 
+Download the local NER model (~1.5 GB, required for name detection):
 
-⸻
+```bash
+python download_model.py
+```
 
-2️⃣ Скачивание модели (обязательно)
+### Usage example
 
-Для работы с ФИО используется локальная gguf-модель
-Qwen2.5-3B-Instruct-IQ3_M (~1.5 GB).
-
-python download_madel.py
-
-Файл будет сохранён как:
-
-Qwen2.5-3B-Instruct-IQ3_M.gguf
-
-
-⸻
-
-3️⃣ Пример использования
-
+```python
 from pii_agent_pro import PIIGateway
 from pii_models import PIIGatewayPolicy
 
@@ -159,104 +79,118 @@ policy = PIIGatewayPolicy(fail_closed=True)
 
 gateway = PIIGateway(
     model_path="Qwen2.5-3B-Instruct-IQ3_M.gguf",
-    policy=policy
+    policy=policy,
 )
 
 session_id = "chat_001"
+text = "My name is Peter Ivanov. Phone +79991234567."
 
-text = "Меня зовут Петр Иванов. Телефон +79991234567."
-res = gateway.tokenize(session_id, text)
+result = gateway.tokenize(session_id, text)
+print(result["tokenized_text"])
+# My name is <<NAME_1>>. Phone <<PHONE_1>>.
 
-print(res["tokenized_text"])
-# Меня зовут <<NAME_1>>. Телефон <<PHONE_1>>.
-
-cloud_reply = "Здравствуйте, <<NAME_1>>!"
+cloud_reply = "Hello, <<NAME_1>>!"
 print(gateway.restore(session_id, cloud_reply))
-# Здравствуйте, Петр Иванов!
+# Hello, Peter Ivanov!
+```
 
+### CRM / database export
 
-⸻
-
-🗄️ Интеграция с CRM / БД
-
+```python
 gateway.export_fields(session_id)
+# {"NAME": ["Peter Ivanov"], "PHONE": ["+79991234567"]}
+```
 
-Пример:
+---
 
-{
-  "NAME": ["Петр Иванов"],
-  "PHONE": ["+79991234567"]
-}
+## Supported PII types
 
-Можно:
-	•	сохранять в CRM,
-	•	писать в БД,
-	•	использовать в локальных AI-агентах.
+### Structured (regex + validation)
 
-⸻
+| Type | Token | Notes |
+|------|-------|-------|
+| Email | `<<EMAIL_N>>` | |
+| Phone (RU) | `<<PHONE_N>>` | +7/8 prefix, false-positive filtering |
+| Bank card | `<<CARD_N>>` | 13–19 digits, Luhn check |
+| Passport (RU) | `<<PASSPORT_N>>` | 4+6 format, context filter |
+| SNILS | `<<SNILS_N>>` | |
+| Date | `<<DATE_N>>` | dd.mm.yyyy |
 
-📊 Запуск бенчмарка
+### Unstructured (local LLM NER)
 
+| Type | Token | Notes |
+|------|-------|-------|
+| Full name / initials | `<<NAME_N>>` | Qwen 2.5 3B via llama.cpp + heuristic fallback |
+
+---
+
+## Benchmark and quality
+
+The repository includes a golden benchmark for synthetic and mixed test cases. Current README-reported results should be interpreted as results on the included benchmark set, not as a universal guarantee for all real-world text.
+
+Quality checks cover:
+
+- no raw PII leakage in tokenized output;
+- correct restore behavior;
+- no token collisions inside a session;
+- false positive control;
+- false negative regression tests;
+- mixed structured/unstructured examples;
+- negative cases where non-PII should remain unchanged.
+
+Run the full benchmark (requires local model):
+
+```bash
 python benchmark_pro.py
+```
 
-Проверяется:
-	•	отсутствие утечек,
-	•	отсутствие FP,
-	•	корректный restore,
-	•	mixed-кейсы,
-	•	негативные сценарии,
-	•	стабильность токенов между сообщениями.
+See [docs/BENCHMARK.md](./docs/BENCHMARK.md) for methodology and result interpretation.
 
-⸻
+---
 
-🧩 Структура проекта
+## Project structure
 
-.
-├── pii_agent_pro.py      # Основной шлюз
-├── pii_detectors.py      # Regex + валидации
-├── pii_llm_names.py      # LLM-NER для ФИО
-├── pii_vault.py          # Хранилище token ↔ value
-├── pii_models.py         # Политики и константы
-├── benchmark_pro.py      # Golden-benchmark
-├── download_madel.py     # Загрузка модели
+```
+pii_agent_pro.py      # Main gateway
+pii_detectors.py      # Regex detectors + validators
+pii_llm_names.py      # Local LLM NER for names
+pii_vault.py          # Token ↔ value Vault
+pii_models.py         # Policies and constants
+benchmark_pro.py      # Golden benchmark
+download_model.py     # Model download script
+```
 
+---
 
-⸻
+## Known limits
 
-🚧 Ограничения (честно)
+- address detection is not implemented yet;
+- INN/KPP/OGRN detection is not implemented yet;
+- multilingual NER is not complete;
+- Vault encryption is planned but not implemented yet;
+- real-world accuracy depends on language, domain, formatting, and benchmark coverage;
+- local LLM-based NER requires a model download (~1.5 GB) and enough local compute.
 
-Пока не реализовано:
-	•	адреса проживания,
-	•	юрлица / организации,
-	•	ИНН / КПП / ОГРН,
-	•	мультиязычный NER,
-	•	шифрование Vault (запланировано).
+---
 
-Архитектура изначально сделана расширяемой.
+## Roadmap
 
-⸻
+See [ROADMAP.md](./ROADMAP.md) for the full roadmap.
 
-🛣️ Roadmap
-	•	Адреса (RU)
-	•	ИНН / КПП / ОГРН
-	•	Шифрование Vault
-	•	SQLite / Postgres backend
-	•	Streaming-режим
-	•	Примеры интеграции (Telegram / CRM)
+---
 
-⸻
+## Contributing
 
-🎯 Для кого этот проект
-	•	разработчики AI-агентов,
-	•	privacy-first стартапы,
-	•	on-prem AI-решения,
-	•	компании, которым нельзя “сливать” данные в облако,
-	•	инженеры, которым важна корректность, а не магия.
+Contributions are welcome. Good first areas include detectors, benchmark cases, docs, Vault backends, CI, and integration examples. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-⸻
+---
 
-🧠 Философия
+## Security
 
-Приватность — это не prompt.
-Приватность — это архитектура.
+Please do not report security vulnerabilities in public issues. See [SECURITY.md](./SECURITY.md).
 
+---
+
+## License
+
+Apache License 2.0. See [LICENSE](./LICENSE).
