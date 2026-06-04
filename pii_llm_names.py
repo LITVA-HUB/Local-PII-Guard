@@ -1,4 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
+
+"""
+Local LLM-based name extraction (NER) using llama.cpp.
+
+Uses a local Qwen2.5 GGUF model for name detection, with a conservative
+heuristic fallback when the model is unavailable or returns low-quality output.
+Text is preprocessed by masking already-detected PII spans before passing
+to the LLM to reduce hallucinations.
+"""
 
 import json
 import re
@@ -22,7 +31,7 @@ except Exception:
 
 LETTER_CLASS = r"A-Za-zА-Яа-яЁё"
 
-# Частые слова, которые "похожи на имя", но именами почти никогда не являются.
+# Common words that superficially resemble names but almost never are.
 BAN_WORDS = {
     "меня", "я", "мы", "вы",
     "клиент", "покупатель", "заказ", "договор", "акт", "счет", "счёт", "накладная",
@@ -107,15 +116,15 @@ def _clean_tokens(text: str) -> List[str]:
 
 def _looks_like_person_name(text: str) -> bool:
     """
-    Строгий валидатор имени для PII-шлюза.
+    Strict name validator for the PII gateway.
 
-    Принимаем:
-      - "Имя Фамилия" (2-4 слова, каждое с заглавной)
-      - "Фамилия И.И." (фамилия + инициалы)
-    Отбрасываем:
-      - одиночные слова
-      - служебные слова (клиент/меня/зовут/...)
-      - токены/маски/цифры
+    Accepts:
+      - "First Last" (2-4 words, each capitalized)
+      - "Last I.I." (surname + initials)
+    Rejects:
+      - single words
+      - stop words (client/me/called/...)
+      - tokens/masks/digits
     """
     t = " ".join(text.strip().split())
     if len(t) < 3:
@@ -155,10 +164,10 @@ def _token_to_pattern(tok: str) -> str:
 
 def _build_name_search_regex(name_text: str) -> Optional[re.Pattern[str]]:
     r"""
-    Делает regex, который ищет `name_text` в исходном куске:
-      - слова соединяем через \s+ (терпим разные пробелы)
-      - инициалы терпят пробелы после точек
-      - границы по буквам, чтобы не матчить внутри слов
+    Builds a regex that searches for `name_text` in the original chunk:
+      - words are joined with \s+ (tolerates varying whitespace)
+      - initials tolerate spaces after dots
+      - letter boundaries so the match is not made inside words
     """
     name_text = " ".join(name_text.strip().split())
     if not name_text or len(name_text) > 120:
@@ -178,14 +187,14 @@ def _build_name_search_regex(name_text: str) -> Optional[re.Pattern[str]]:
 
 def heuristic_name_spans(text: str) -> List[Tuple[int, int]]:
     """
-    Консервативный fallback для имен (важно: OVERLAP-AWARE).
-    Ищем:
-      - "Имя Фамилия" / "Фамилия Имя" (две заглавные подряд)
-      - "Иванов И.И." (фамилия + инициалы)
+    Conservative fallback for names (important: OVERLAP-AWARE).
+    Looks for:
+      - "First Last" / "Last First" (two consecutive capitalized words)
+      - "Ivanov I.I." (surname + initials)
     """
     spans: set[Tuple[int, int]] = set()
 
-    # OVERLAP-AWARE: используем lookahead, чтобы ловить перекрывающиеся пары.
+    # OVERLAP-AWARE: use lookahead to catch overlapping pairs.
     rx_full = re.compile(
         rf"(?=(?<![{LETTER_CLASS}])([A-ZА-ЯЁ][{LETTER_CLASS}]+)\s+([A-ZА-ЯЁ][{LETTER_CLASS}]+)(?![{LETTER_CLASS}]))"
     )
@@ -322,7 +331,7 @@ class LocalNameExtractor:
                 continue
 
             for cand in candidates:
-                # Иногда модели возвращают просто строки, а не dict
+                # Sometimes models return plain strings instead of dicts
                 if isinstance(cand, str):
                     cand_text = cand.strip()
                     if not _looks_like_person_name(cand_text):
@@ -346,8 +355,8 @@ class LocalNameExtractor:
                 except Exception:
                     s0, e0 = -1, -1
 
-                # Вариант 1: доверяем span ТОЛЬКО если подстрока реально выглядит как имя
-                # и (если есть text) совпадает с text по нормализованным пробелам.
+                # Option 1: trust the span ONLY if the substring actually looks like a name
+                # and (if text is provided) matches text after normalizing whitespace.
                 if 0 <= s0 < e0 <= len(original_chunk):
                     sub = original_chunk[s0:e0]
                     if _looks_like_person_name(sub):
@@ -357,7 +366,7 @@ class LocalNameExtractor:
                             add_entity(s, e, text[s:e], "llm:span_exact", 0.9)
                             continue
 
-                # Вариант 2: snap-to-substring — индексы кривые, ищем cand_text в исходнике.
+                # Option 2: snap-to-substring — indices are off, search for cand_text in the source.
                 if cand_text and _looks_like_person_name(cand_text):
                     rx = _build_name_search_regex(cand_text)
                     if rx is None:
@@ -371,12 +380,12 @@ class LocalNameExtractor:
                     if found_any:
                         continue
 
-                # Вариант 3 (span-only, но не проходит валидатор) — игнорируем, чтобы не было "Меня з<<NAME>>..."
+                # Option 3 (span-only, but fails the validator) — ignore to avoid "Me <<NAME>>..."
 
         if total_chunks > 0 and parse_fail_chunks == total_chunks:
             warnings.append("name_llm_parse_failed")
 
-        # дедуп по span
+        # deduplicate by span
         uniq: Dict[Tuple[int, int], Entity] = {}
         for e in out:
             key = (e.start, e.end)
@@ -385,3 +394,5 @@ class LocalNameExtractor:
 
         entities = sorted(list(uniq.values()), key=lambda x: (x.start, x.end))
         return entities, warnings
+
+__all__ = ["LocalNameExtractor", "heuristic_name_spans"]
