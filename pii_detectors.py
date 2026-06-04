@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""
+Regex-based PII detectors with optional validators and context filters.
+
+Each detector is a RegexDetector dataclass that wraps a compiled pattern,
+an optional validator (e.g. Luhn check for cards), and an optional context
+filter (e.g. passport context words).
+"""
+
 import re
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Pattern
@@ -99,7 +107,7 @@ def build_default_regex_detectors(policy: PIIGatewayPolicy) -> List[RegexDetecto
     )
 
     # CARD (13-19 digits w/ separators) + Luhn + optional context
-    # Важно: границы (?!\d)/(?<!\d) запрещают матчить кусок внутри длинной цифровой строки.
+    # Boundary assertions (?<!\d) / (?!\d) prevent matching digits inside longer numeric strings.
     card_pattern = re.compile(r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d)")
 
     def card_validator(m: re.Match[str], text: str) -> bool:
@@ -128,7 +136,7 @@ def build_default_regex_detectors(policy: PIIGatewayPolicy) -> List[RegexDetecto
     )
 
     # PHONE RU
-    # FIX: запрет на матч "внутри числа" (это именно твои FP по заказам).
+    # Boundary assertions prevent matching phone-like substrings inside order numbers.
     phone_pattern = re.compile(
         r"(?<!\d)(?:\+7|8)[\s\(.-]?\d{3}[\s\).-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}(?!\d)"
     )
@@ -188,3 +196,6 @@ def build_default_regex_detectors(policy: PIIGatewayPolicy) -> List[RegexDetecto
     )
 
     return dets
+
+
+__all__ = ["RegexDetector", "build_default_regex_detectors", "is_luhn_valid"]
